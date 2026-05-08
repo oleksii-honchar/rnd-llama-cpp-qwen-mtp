@@ -1,0 +1,91 @@
+# Extends ghcr.io/mostlygeek/llama-swap:cuda with CUDA-built llama-server from source (no whisper-server).
+# Configs that need Whisper must use another image or a Dockerfile that still builds whisper.cpp.
+#
+# Build: from llama-swap root, e.g.
+#   docker compose -f docker-compose/swap-local-config9.yaml build --no-cache
+# Override llama.cpp pin:
+#   docker build --build-arg LLAMA_CPP_REF=b9018 --build-arg GGML_CUDA_ARCHITECTURES=120 -f docker-files/Dockerfile.llama-cpp-beta .
+# Expect ~10–20+ min for llama.cpp (longer with GGML_CUDA_FA_ALL_QUANTS=ON).
+#
+# CUDA 12.8.1: Default GPU arch120 = Blackwell (RTX 5090 / sm_120).
+# Override: docker build --build-arg GGML_CUDA_ARCHITECTURES=89 ... (Ada RTX 4060 / sm_89).
+#
+# GGML_CUDA_FA_ALL_QUANTS=ON: FlashAttention CUDA kernels for all K/V cache quants (e.g. --cache-type-v q4_0 with --flash-attn).
+
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS llama-builder
+
+RUN apt-get update && apt-get install -y \
+  pciutils cmake build-essential git \
+  curl libcurl4-openssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN STUBS=/usr/local/cuda/lib64/stubs && \
+  test -f "${STUBS}/libcuda.so" && ln -sf libcuda.so "${STUBS}/libcuda.so.1" || true
+
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH:-}
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH:-}
+
+WORKDIR /tmp
+
+# Pin llama.cpp (shallow single revision).
+# LLAMA_CPP_REPO — default ggml-org; use a fork URL for TurboQuant / custom branches.
+#   LLAMA_CPP_REF — branch, tag, or full SHA for `git fetch origin <ref>`.
+# Default ref: refs/pull/22673/head (PR #22673 — native MTP speculative decoding by am17an).
+#   PR #22673 is based on d8794eecd5 + includes the MTP changes.
+#   We fetch the PR head directly so git fetch --depth 1 works (PR refs are shallow-accessible).
+ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
+ARG LLAMA_CPP_REF=refs/pull/22673/head
+RUN git init llama.cpp && cd llama.cpp \
+  && git remote add origin "${LLAMA_CPP_REPO}" \
+  && git fetch --depth 1 origin "${LLAMA_CPP_REF}" \
+  && git checkout -q FETCH_HEAD
+
+# Tokenizer non-backtracking fix: PR #22110 is still open (not merged).
+# Qwen3.5/3.6 fix (#22110) requires patch until merged.
+# NOTE: If PR #22110 merges, remove this block and rely on upstream.
+# NOTE: PR #22673 base may already include #22110 — apply only if check passes.
+WORKDIR /tmp/llama.cpp
+RUN curl -fsSL https://github.com/ggml-org/llama.cpp/pull/22110.patch -o /tmp/22110.patch \
+  && if git apply --check /tmp/22110.patch 2>/dev/null; then \
+        git apply /tmp/22110.patch; \
+      else \
+        echo "PR #22110 already applied (contained in base), skipping"; \
+      fi \
+  && rm /tmp/22110.patch
+
+# PR #22400 (partial seq_rm for GDN models) — dependency of #22673.
+# NOTE: PR #22673 base may already contain these commits. Apply only if check passes.
+RUN curl -fsSL https://github.com/ggml-org/llama.cpp/pull/22400.patch -o /tmp/22400.patch \
+  && if git apply --check /tmp/22400.patch 2>/dev/null; then \
+        git apply /tmp/22400.patch; \
+      else \
+        echo "PR #22400 not applicable independently (contained in #22673 base), skipping"; \
+      fi \
+  && rm -f /tmp/22400.patch
+
+# PR #22673 (native MTP speculative decoding) — already included via LLAMA_CPP_REF=refs/pull/22673/head.
+# No additional patch needed.
+
+ARG GGML_NATIVE=ON
+ARG BUILD_JOBS
+# 120 = Blackwell (RTX 5090). 89 = Ada (RTX 4060/4070). See ggml CUDA arch list in llama.cpp docs.
+ARG GGML_CUDA_ARCHITECTURES=120
+
+RUN NJOBS="${BUILD_JOBS:-$(nproc)}" \
+  && cmake -B build -S . \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DGGML_CUDA=ON \
+  -DGGML_CUDA_FA_ALL_QUANTS=ON \
+  -DGGML_CUDA_ARCHITECTURES=${GGML_CUDA_ARCHITECTURES} \
+  -DGGML_NATIVE=${GGML_NATIVE} \
+  && cmake --build build --config Release -j "${NJOBS}" --clean-first \
+  --target llama-server --target llama-bench --target llama-perplexity
+
+FROM ghcr.io/mostlygeek/llama-swap:cuda
+USER root
+# The base image places llama-server at /app/llama-server and prepends /app to PATH.
+# We must overwrite that location so the new binary is found first.
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-server /app/llama-server
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-bench /usr/local/bin/llama-bench
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-perplexity /usr/local/bin/llama-perplexity

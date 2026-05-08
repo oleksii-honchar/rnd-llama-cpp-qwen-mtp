@@ -1,0 +1,33 @@
+# llama-cpp-beta — llama-server with CUDA + native MTP (PR #22673) from ggml-org/llama.cpp.
+# Requires: external network mammoth-net, NVIDIA runtime, MODELS_MOUNT_PATH (default: ../llama-models/models next to llama-swap).
+#
+# Build (fresh binaries): from llama-swap root:
+#   docker compose -f docker-compose/swap-local-config9.yaml build --no-cache
+services:
+  llama-swap:
+    build:
+      context: .
+      dockerfile: docker-files/Dockerfile.llama-cpp-beta
+      args:
+        GGML_NATIVE: ${GGML_NATIVE:-ON}
+        BUILD_JOBS: ${BUILD_JOBS:-}
+        GGML_CUDA_ARCHITECTURES: ${GGML_CUDA_ARCHITECTURES:-120}
+    image: llama-cpp-beta:latest
+    container_name: llama-swap
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
+    ports:
+      - "8014:8080"
+    volumes:
+      - "${MODELS_MOUNT_PATH:-../llama-models/models}:/models:ro"
+      - ./configs/config-9.yaml:/app/config.yaml:ro
+    networks:
+      - mammoth-net
+
+networks:
+  mammoth-net:
+    external: true

@@ -1,0 +1,14 @@
+# Model files (downloaded by scripts)
+llama-models/models/*.gguf
+llama-models/models/*.jinja
+llama-models/models/wiki.test.raw
+llama-models/wikitext2.zip
+
+# Python venv (created by transplant script)
+llama-models/scripts/.venv-mtp-transplant/
+
+# Docker logs
+llama-swap/logs/
+
+# OS artifacts
+.DS_Store

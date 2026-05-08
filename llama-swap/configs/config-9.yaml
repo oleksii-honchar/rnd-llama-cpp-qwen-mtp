@@ -1,0 +1,185 @@
+# llama-swap config9: Qwopus3.6-27B-v1-preview MTP Q6_K + Q4_K_M (native llama.cpp speculative decoding)
+#   Source (target): https://huggingface.co/Jackrong/Qwopus3.6-27B-v1-preview-GGUF (Q6_K ~22 GB, Q4_K_M ~16.5 GB)
+#   Source (MTP layers): https://huggingface.co/am17an/Qwen3.6-27B-MTP-GGUF (Q8_0, ~27 GB)
+#   Transplanted:
+#     - Qwopus3.6-27B-v1-preview-MTP-Q6_K.gguf   (Q6_K base + Q8_0 MTP layers, ~23-24 GB)
+#     - Qwopus3.6-27B-v1-preview-MTP-Q4_K_M.gguf (Q4_K_M base + Q8_0 MTP layers, ~17-18 GB)
+#
+# Concurrency: **exclusive groups** — two models, one at a time.
+# Config9 is a **beta** config — uses Dockerfile.llama-cpp-beta with PR #22673 (native MTP).
+#
+# Model IDs:
+#   - qwopus36-27b        (Q6_K, default, thinking on)
+#   - qwopus36-27b-q4     (Q4_K_M, default, thinking on)
+# Three aliases each:
+#   - qwopus36-27b / qwopus36-27b-precise / qwopus36-27b-instruct
+#   - qwopus36-27b-q4 / qwopus36-27b-q4-precise / qwopus36-27b-q4-instruct
+#
+# MTP speculative decoding:
+#   --spec-type mtp --spec-draft-n-max 3
+#   ~72% draft acceptance, ~2.4× speedup (per PR #22673 author)
+#
+# VRAM estimates (Q4_0 K/V cache + MTP overhead):
+#   Q6_K:  ~22 GB weights + ~1 GB KV + ~2-2.5 GB MTP = ~25-25.5 GB — comfortable on 32 GB RTX 5090
+#   Q4_K_M: ~16.5 GB weights + ~1 GB KV + ~2-2.5 GB MTP = ~19.5-20 GB — fits on 24 GB RTX 4090
+#
+# Chat template: better-qwen3.6-chat-template.jinja
+# 27B dense bug: preserve_thinking may be ignored (llama.cpp #22088 / #22255)
+#
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
+
+healthCheckTimeout: 180
+logToStdout: "both"
+logLevel: "info"
+
+models:
+  qwopus36-27b:
+    name: "Qwopus3.6-27B-v1-preview MTP Q6_K"
+    aliases:
+      - qwopus36-27b-precise
+      - qwopus36-27b-instruct
+    cmd: >
+      llama-server
+      --port ${PORT}
+      --host 0.0.0.0
+      --model /models/Qwopus3.6-27B-v1-preview-MTP-Q6_K.gguf
+      --mmproj /models/Qwopus3.6-27B-v1-preview-mmproj.gguf
+      --chat-template-file /models/better-qwen3.6-chat-template.jinja
+      --jinja
+      --flash-attn on
+      --kv-unified
+      --cache-type-k q4_0
+      --cache-type-v q4_0
+      --batch-size 2048
+      --ubatch-size 512
+      --ctx-size 204800
+      --parallel 1
+      --spec-type mtp
+      --spec-draft-n-max 4
+      --no-mmap
+      --mlock
+      --warmup
+      --no-webui
+      --perf
+      --log-timestamps
+      --log-prefix
+      -ngl 99
+    filters:
+      stripParams: "temperature, top_p, top_k, min_p, presence_penalty, repeat_penalty, reasoning-budget, chat_template_kwargs"
+      setParamsByID:
+        qwopus36-27b:
+          temperature: 1.0
+          top_p: 1.0
+          top_k: 25
+          min_p: 0.2
+          presence_penalty: 0.1
+          repeat_penalty: 1.05
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: true
+            preserve_thinking: true
+        qwopus36-27b-precise:
+          temperature: 0.6
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repeat_penalty: 1.0
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: true
+        qwopus36-27b-instruct:
+          temperature: 0.7
+          top_p: 0.80
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repeat_penalty: 1.0
+          reasoning-budget: 0
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: false
+    checkEndpoint: /health
+    proxy: http://127.0.0.1:${PORT}
+    ttl: 300
+
+  qwopus36-27b-q4:
+    name: "Qwopus3.6-27B-v1-preview MTP Q4_K_M"
+    aliases:
+      - qwopus36-27b-q4-precise
+      - qwopus36-27b-q4-instruct
+    cmd: >
+      llama-server
+      --port ${PORT}
+      --host 0.0.0.0
+      --model /models/Qwopus3.6-27B-v1-preview-MTP-Q4_K_M.gguf
+      --mmproj /models/Qwopus3.6-27B-v1-preview-mmproj.gguf
+      --chat-template-file /models/better-qwen3.6-chat-template.jinja
+      --jinja
+      --flash-attn on
+      --kv-unified
+      --cache-type-k q4_0
+      --cache-type-v q4_0
+      --batch-size 2048
+      --ubatch-size 512
+      --ctx-size 204800
+      --parallel 1
+      --spec-type mtp
+      --spec-draft-n-max 4
+      --no-mmap
+      --mlock
+      --warmup
+      --no-webui
+      --perf
+      --log-timestamps
+      --log-prefix
+      -ngl 99
+    filters:
+      stripParams: "temperature, top_p, top_k, min_p, presence_penalty, repeat_penalty, reasoning-budget, chat_template_kwargs"
+      setParamsByID:
+        qwopus36-27b-q4:
+          temperature: 1.0
+          top_p: 1.0
+          top_k: 25
+          min_p: 0.2
+          presence_penalty: 0.1
+          repeat_penalty: 1.05
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: true
+            preserve_thinking: true
+        qwopus36-27b-q4-precise:
+          temperature: 0.6
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repeat_penalty: 1.0
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: true
+        qwopus36-27b-q4-instruct:
+          temperature: 0.7
+          top_p: 0.80
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repeat_penalty: 1.0
+          reasoning-budget: 0
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: false
+    checkEndpoint: /health
+    proxy: http://127.0.0.1:${PORT}
+    ttl: 300
+
+groups:
+  mtp:
+    members:
+      - qwopus36-27b
+      - qwopus36-27b-q4
+    swap: true
+    exclusive: true
+
