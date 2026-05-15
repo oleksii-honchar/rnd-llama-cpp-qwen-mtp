@@ -1,0 +1,117 @@
+# mammoth-lan llama-swap config10: Qwen3.6-27B Q6_K + DFlash speculative decoding
+#   Target: https://huggingface.co/unsloth/Qwen3.6-27B-GGUF (Q6_K, ~22.5 GB)
+#   Drafter: https://huggingface.co/spiritbuun/Qwen3.6-27B-DFlash-GGUF (Q4_K_M, ~0.9 GB)
+#
+# IMPORTANT: DFlash drafter was trained on Qwen3.6-27B hidden states. Using any other
+# model (e.g. Qwopus3.6-27B) as the target causes out-of-range crashes during spec cycles
+# because the drafter's cross-attention produces indices incompatible with the target's
+# hidden states. The target MUST be Qwen3.6-27B (or a very close variant).
+#
+# Concurrency: **single-model** (no matrix, no groups)
+# Config10 is a **beta** config — uses BeeLlama fork (Anbeeld/beellama.cpp v0.1.2).
+#
+# Model ID: qwen36-27b
+# Three aliases:
+#   - qwen36-27b (default, thinking on)
+#   - qwen36-27b-precise (thinking off, precise coding)
+#   - qwen36-27b-instruct (no thinking, instruct mode)
+#
+# DFlash speculative decoding:
+#   --spec-type dflash --spec-dflash-cross-ctx 1024
+#   spiritbuun Q4_K_M drafter (recommended — Q8_0 is slower with no quality benefit)
+#   ~107 t/s at 262K on mobile 5090M → ~150-180 t/s on desktop 5090
+#
+# VRAM estimate (Q6_K + DFlash + turbo4/turbo3_tcq KV + 130K context):
+#   Model weights: ~22.5 GB
+#   DFlash drafter: ~0.9 GB
+#   K/V cache (turbo4/turbo3_tcq, 130K): ~3 GB
+#   Total: ~26.4 GB — comfortable on 32 GB
+#
+# Chat template: better-qwen3.6-chat-template.jinja
+# 27B dense bug: preserve_thinking may be ignored (llama.cpp #22088 / #22255)
+#
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
+
+healthCheckTimeout: 180
+logToStdout: "both"
+logLevel: "info"
+
+models:
+  qwen36-27b:
+    name: "Qwen3.6-27B Q6_K + DFlash"
+    aliases:
+      - qwen36-27b-precise
+      - qwen36-27b-instruct
+    cmd: >
+      llama-server
+      --port ${PORT}
+      --host 0.0.0.0
+      -m /models/Qwen3.6-27B-Q6_K.gguf
+       --spec-draft-model /models/dflash-draft-3.6-q4_k_m.gguf
+      --chat-template-file /models/better-qwen3.6-chat-template.jinja
+      --jinja
+      --flash-attn on
+      --kv-unified
+      --cache-type-k turbo4
+      --cache-type-v turbo3_tcq
+      --batch-size 2048
+      --ubatch-size 256
+      --ctx-size 128000
+      --parallel 1
+      --spec-type dflash
+      --spec-dflash-cross-ctx 1024
+      --spec-draft-ngl all
+      --no-mmap
+      --mlock
+      --warmup
+      --no-webui
+      --perf
+      --log-timestamps
+      --log-prefix
+      --threads 8
+      --threads-batch 16
+      --cache-ram 0
+      --ctx-checkpoints 16
+      -ngl 99
+      --reasoning on
+      --no-host
+      --metrics
+    filters:
+      stripParams: "temperature, top_p, top_k, min_p, presence_penalty, repeat_penalty, reasoning-budget, chat_template_kwargs"
+      setParamsByID:
+        qwen36-27b:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repeat_penalty: 1.0
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: true
+            preserve_thinking: true
+        qwen36-27b-precise:
+          temperature: 0.6
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repeat_penalty: 1.0
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: true
+        qwen36-27b-instruct:
+          temperature: 0.7
+          top_p: 0.80
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repeat_penalty: 1.0
+          reasoning-budget: 0
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: false
+    checkEndpoint: /health
+    proxy: http://127.0.0.1:${PORT}
+    ttl: 300

@@ -1,0 +1,64 @@
+# Extends ghcr.io/mostlygeek/llama-swap:cuda with CUDA-built llama-server from BeeLlama fork.
+# Configs that need Whisper must use another image or a Dockerfile that still builds whisper.cpp.
+# Config10 uses this image for Qwen3.6-27B Q6_K + DFlash speculative decoding.
+#
+# Build: from mammoth-lan/llama-swap root, e.g.
+#   docker compose -f docker-compose/swap-local-config10.yaml build --no-cache
+# Override BeeLlama pin:
+#   docker build --build-arg LLAMA_CPP_REF=v0.1.2 --build-arg GGML_CUDA_ARCHITECTURES=120 -f docker-files/Dockerfile.llama-cpp-beellama .
+# Expect ~10–20+ min for BeeLlama build (longer with GGML_CUDA_FA_ALL_QUANTS=ON).
+#
+# CUDA 12.8.1: toolchain matches mammoth-lan/llama-cpp. Default GPU arch120 = Blackwell (RTX 5090 / sm_120).
+# Override: docker build --build-arg GGML_CUDA_ARCHITECTURES=89 ... (Ada RTX 4060 / sm_89).
+#
+# GGML_CUDA_FA_ALL_QUANTS=ON: FlashAttention CUDA kernels for all K/V cache quants (required for TurboQuant).
+
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS llama-builder
+
+RUN apt-get update && apt-get install -y \
+  pciutils cmake build-essential git \
+  curl libcurl4-openssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN STUBS=/usr/local/cuda/lib64/stubs && \
+  test -f "${STUBS}/libcuda.so" && ln -sf libcuda.so "${STUBS}/libcuda.so.1" || true
+
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH:-}
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH:-}
+
+WORKDIR /tmp
+
+# Pin BeeLlama fork (shallow single revision).
+# Default ref: v0.1.2 (latest as of 2026-05-14). Includes DFlash, TurboQuant, adaptive draft, reasoning-loop protection.
+ARG LLAMA_CPP_REPO=https://github.com/Anbeeld/beellama.cpp.git
+ARG LLAMA_CPP_REF=v0.1.2
+RUN git init llama.cpp && cd llama.cpp \
+  && git remote add origin "${LLAMA_CPP_REPO}" \
+  && git fetch --depth 1 origin "${LLAMA_CPP_REF}" \
+  && git checkout -q FETCH_HEAD
+
+WORKDIR /tmp/llama.cpp
+
+ARG GGML_NATIVE=ON
+ARG BUILD_JOBS
+# 120 = Blackwell (RTX 5090). 89 = Ada (RTX 4060/4070). See ggml CUDA arch list in llama.cpp docs.
+ARG GGML_CUDA_ARCHITECTURES=120
+
+RUN NJOBS="${BUILD_JOBS:-$(nproc)}" \
+  && cmake -B build -S . \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DGGML_CUDA=ON \
+  -DGGML_CUDA_FA_ALL_QUANTS=ON \
+  -DGGML_CUDA_ARCHITECTURES=${GGML_CUDA_ARCHITECTURES} \
+  -DGGML_NATIVE=${GGML_NATIVE} \
+  && cmake --build build --config Release -j "${NJOBS}" --clean-first \
+  --target llama-server --target llama-bench --target llama-perplexity
+
+FROM ghcr.io/mostlygeek/llama-swap:cuda
+USER root
+# The base image places llama-server at /app/llama-server and prepends /app to PATH.
+# We must overwrite that location so the new binary is found first.
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-server /app/llama-server
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-bench /usr/local/bin/llama-bench
+COPY --from=llama-builder /tmp/llama.cpp/build/bin/llama-perplexity /usr/local/bin/llama-perplexity

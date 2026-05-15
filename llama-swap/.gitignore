@@ -1,0 +1,4 @@
+# Model files (downloaded by ../llama-models/scripts/download-*.sh)
+models/
+# Saved container logs (e.g. docker logs llama-swap > logs/config-4.logs)
+logs/
