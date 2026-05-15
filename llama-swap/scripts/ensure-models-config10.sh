@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ensure artifacts for config-10 (Qwen3.6-27B Q6_K + DFlash drafter Q4_K_M + better-qwen3.6 chat template).
+# Ensure artifacts for config-10 (Qwen3.6-27B Q6_K + DFlash drafter Q4_K_M + Qwopus3.6-27B-v1-preview Q6_K + better-qwen3.6 chat template).
 # Layout: repo root/llama-swap next to repo root/llama-models. Exports MODELS_MOUNT_PATH for docker compose (= llama-models/models).
 #
 # IMPORTANT: Target model MUST be unsloth/Qwen3.6-27B-GGUF (NOT Jackrong/Qwopus3.6-27B).
@@ -24,6 +24,7 @@ export MODELS_MOUNT_PATH="$MODELS_DIR"
 REQUIRED_MODELS=(
   "Qwen3.6-27B-Q6_K.gguf:download-qwen36-27b-q6_k.sh"
   "dflash-draft-3.6-q4_k_m.gguf:download-dflash-draft-3.6-q4_k_m.sh"
+  "Qwopus3.6-27B-v1-preview-Q6_K.gguf:download-qwopus36-27b-v1-preview-q6_k.sh"
   "better-qwen3.6-chat-template.jinja:download-better-qwen3.6-chat-template.sh"
 )
 
