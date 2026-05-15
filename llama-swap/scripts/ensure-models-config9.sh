@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Ensure artifacts for config-9 exist (Qwopus3.6-27B-v1-preview-MTP-Q6_K + MTP-Q4_K_M transplanted GGUFs + better-qwen3.6 chat template).
-# The transplanted GGUFs are produced by transplant-qwopus36-mtp-q6_k.sh and transplant-qwopus36-mtp-q4_k_m.sh respectively.
-# Layout: repo root/llama-swap next to repo root/llama-models. Exports MODELS_MOUNT_PATH for docker compose (= llama-models/models).
+# Ensure artifacts for config-9 exist (Qwopus3.6-27B-v1-preview-MTP-Q6_K transplanted GGUF + better-qwen3.6 chat template).
+# The transplanted GGUF is produced by transplant-qwopus36-mtp-q6_k.sh which downloads both source GGUFs and runs the transplant.
+# Layout: mammoth-lan/llama-swap next to mammoth-lan/llama-models. Exports MODELS_MOUNT_PATH for docker compose (= llama-models/models).
 set -euo pipefail
 
 FORCE=0
@@ -20,8 +20,6 @@ export MODELS_MOUNT_PATH="$MODELS_DIR"
 # The transplant script handles both downloads + transplant internally.
 REQUIRED_MODELS=(
   "Qwopus3.6-27B-v1-preview-MTP-Q6_K.gguf:transplant-qwopus36-mtp-q6_k.sh"
-  "Qwopus3.6-27B-v1-preview-MTP-Q4_K_M.gguf:transplant-qwopus36-mtp-q4_k_m.sh"
-  "Qwopus3.6-27B-v1-preview-mmproj.gguf:download-qwopus36-27b-v1-preview-q6_k.sh"
   "better-qwen3.6-chat-template.jinja:download-better-qwen3.6-chat-template.sh"
 )
 

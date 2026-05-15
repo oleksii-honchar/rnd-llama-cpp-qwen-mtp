@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Ensure artifacts for config-10 (Qwen3.6-27B Q6_K + DFlash drafter Q4_K_M + better-qwen3.6 chat template).
-# Layout: mammoth-lan/llama-swap next to mammoth-lan/llama-models. Exports MODELS_MOUNT_PATH for docker compose (= llama-models/models).
+# Layout: repo root/llama-swap next to repo root/llama-models. Exports MODELS_MOUNT_PATH for docker compose (= llama-models/models).
 #
 # IMPORTANT: Target model MUST be unsloth/Qwen3.6-27B-GGUF (NOT Jackrong/Qwopus3.6-27B).
 # DFlash drafter was trained on Qwen3.6-27B hidden states. Using Qwopus3.6-27B as target
@@ -15,9 +15,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MAMMOTH_LAN="$(cd "${ROOT}/.." && pwd)"
-MODELS_DIR="${MAMMOTH_LAN}/llama-models/models"
-LM_DL_SCRIPTS="${MAMMOTH_LAN}/llama-models/scripts"
+REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
+MODELS_DIR="${REPO_ROOT}/llama-models/models"
+LM_DL_SCRIPTS="${REPO_ROOT}/llama-models/scripts"
 export MODELS_MOUNT_PATH="$MODELS_DIR"
 
 # file_relative_to_models:script_basename (canonical: mammoth-lan/llama-models/scripts)
