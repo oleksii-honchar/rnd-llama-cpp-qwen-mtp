@@ -48,11 +48,20 @@ Place these under the host path that is mounted as `/models` in the container (`
 
 `scripts/ensure-models-config4.sh` runs these from **`llama-models/scripts/`** (paths relative to **`llama-swap`**). Filenames must match the config (or edit **`configs/config-4.yaml`**).
 
+**Config-1 (TQ3_4S TurboQuant):** `scripts/ensure-models-config1.sh` runs these from **`llama-models/scripts/`**.
+
+| File | Download script | Source |
+|------|-----------------|--------|
+| `Qwen3.6-35B-A3B-MTP-TQ3_4S.gguf` | `../llama-models/scripts/download-qwen36-35b-a3b-mtp-tq3_4s.sh` | Qwen3.6 35B-A3B MTP TQ3_4S |
+| `Qwen3.6-35B-A3B-TQ3_4S.gguf` | `../llama-models/scripts/download-qwen36-35b-a3b-tq3_4s.sh` | Qwen3.6 35B-A3B TQ3_4S |
+| `chat_template-v13.jinja` | `../llama-models/scripts/download-qwen36-chat-template-v13.sh` | Qwen3.6 chat template v13 |
+
 ## Scripts & configs
 
 | Config | Compose file | Dockerfile | Image |
 |--------|--------------|------------|-----|
 | **swap.config4** (default) | `docker-compose/swap-local-config4.yaml` | `docker-files/Dockerfile.llama-cpp` → **configs/config-4.yaml** | `llama-cpp:latest` |
+| **swap.config1** (TQ3_4S) | `docker-compose/swap-local-config1.yaml` | `docker-files/Dockerfile.llama-cpp-tq3` → **configs/config-1.yaml** | `llama-cpp-tq3:latest` |
 | **swap.config5** | `docker-compose/swap-local-config5.yaml` | `docker-files/Dockerfile.llama-cpp-tq3` → **configs/config-5.yaml** | `llama-cpp-tq3:latest` |
 | **swap.local** | `docker-compose/swap-local.yaml` | `docker-files/Dockerfile.local` (base image + `whisper-server` binary; same **config-4.yaml** mount) | `llama-swap-local:latest` |
 
@@ -62,10 +71,13 @@ Place these under the host path that is mounted as `/models` in the container (`
 - `./start.sh --list` or `./start.sh -l` — list configs
 - `./stop.sh` / `./restart.sh` — stop / stop then start default
 - **`scripts/smoke-config4.sh`** — smoke **config-4** (chat models in catalog). Example: `LLAMA_SWAP_URL=http://host:8014 ./scripts/smoke-config4.sh`
+- **`scripts/swap.start.config1.sh`** — **swap.config1** (TQ3_4S: Qwen3.6-35B-A3B) + **`ensure-models-config1.sh`**
+- **`scripts/smoke-config1.sh`** — smoke **config-1** (qwen36-35b-tq3)
 
 ## Config files
 
 - **configs/config-4.yaml** — **swap.config4**: matrix concurrency for Qwopus 27B/9B, Gemma 4 31B, Qwen3.5 heretic 27B, Qwen3.6 35B-A3B (see file header). Mounted by **swap-local-config4.yaml** and **swap-local.yaml**.
+- **configs/config-1.yaml** — **swap.config1**: TQ3_4S TurboQuant single model — Qwen3.6-35B-A3B (see file header for VRAM constraints). Mounted by **swap-local-config1.yaml**.
 - Add more `.yaml` files under **`configs/`** if needed; point the compose volume at the file you want.
 
 ## Healthcheck
@@ -235,6 +247,7 @@ No Infisical; scripts use plain `docker compose`.
 - **Images**:
   - **swap.config4** uses `llama-cpp:latest` built from **Dockerfile.llama-cpp** (CUDA **llama-server** from ggml-org/llama.cpp source).
   - **swap.config5** uses `llama-cpp-tq3:latest` built from **Dockerfile.llama-cpp-tq3** (CUDA **llama-server** from turbo-tan/llama.cpp-tq3 fork with TQ3_4S support).
+  - **swap.config1** uses `llama-cpp-tq3:latest` built from **Dockerfile.llama-cpp-tq3** (CUDA **llama-server** from turbo-tan/llama.cpp-tq3 fork with TQ3_4S TurboQuant support). Single model.
   - **swap.local** uses `llama-swap-local:latest` built from **Dockerfile.local** (official **llama-swap:cuda** + bundled **whisper-server**).
 
 ### llama-server options (config files)

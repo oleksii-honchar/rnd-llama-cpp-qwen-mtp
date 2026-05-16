@@ -1,0 +1,101 @@
+# behemoth-lan llama-swap config1: Qwen3.6-35B-A3B-TQ3_4S on turbo-tan/llama.cpp-tq3 (runtime fingerprint: b8831-72da57605)
+# Chat template: chat_template-v13.jinja (froggeric/Qwen-Fixed-Chat-Templates, qwen3.6 branch)
+#   TQ3_4S quantization — TurboQuant mixed-precision MoE compression (2-bit experts, 4-bit attention)
+#
+# Model: Qwen3.6-35B-A3B-TQ3_4S (3.07 BPW, 12.4 GiB) from YTan2000/Qwen3.6-35B-A3B-TQ3_4S
+# Runtime: turbo-tan/llama.cpp-tq3 fork with -ctk / -ctv KV cache flags
+#
+# GPU: 16 GiB VRAM (sm_120 Blackwell). Model weights = 12.4 GiB.
+#   ctx-size reduced to 16384 and K-cache quantized to q2_K to fit VRAM with headroom.
+#   Without these constraints, llama.cpp silently falls back to system RAM on OOM.
+#
+# WSL2 GOTCHA: GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 is REQUIRED in docker-compose for WSL2.
+#   Without it, partial offload falls back to raw vmmemWSL which is slower than unified memory overflow.
+#   With it, llama.cpp allocates directly into VRAM first, and only overflows to unified memory
+#   when VRAM is full. The model must fit in VRAM with headroom for this to work correctly.
+#
+# Logs: **logToStdout: "both"** forwards each spawned **llama-server** stdout into the container log stream.
+# View with **`./logs.sh`** or **`./logs.sh -f`** (container name: **llama-swap**).
+# "Empty" assistant replies (no error): with enable_thinking, many clients only render `message.content`
+# while the model streams internal reasoning into `reasoning_content` (or uses the full budget there).
+# Fix: raise client `max_tokens` / `max_completion_tokens` so answer fits after reasoning, or call the
+# `qwen36-35b-tq3-precise` alias (thinking off). Raw check: `curl -s .../v1/chat/completions | jq .`
+#
+# Max new tokens: OpenAI bodies use `max_tokens` / `max_completion_tokens` (per request). Server CLI:
+#   `-n` / `--n-predict` sets the default `n_predict` when those fields are omitted (upstream default -1 = no cap).
+#   Example in cmd: `--n-predict 32768` caps only the omit case; explicit client `max_tokens` still wins unless
+#   you override via `filters.setParamsByID` (injected by llama-swap; replaces client value).
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
+healthCheckTimeout: 180
+logToStdout: "both"
+logLevel: "info"
+
+hooks:
+  on_startup:
+    preload:
+      - qwen36-35b-tq3
+
+models:
+  qwen36-35b-tq3:
+    name: "Qwen3.6-35B-A3B-MTP-TQ3_4S (TurboQuant, 3.07 BPW)"
+    aliases:
+      - qwen36-35b-tq3-precise
+    cmd: >
+      llama-server
+      --port ${PORT}
+      --host 0.0.0.0
+      --model /models/Qwen3.6-35B-A3B-MTP-TQ3_4S.gguf
+      --jinja
+      --chat-template-file /models/chat_template-v13.jinja
+      -fa on
+      -ctk q8_0
+      -ctv tq3_0
+      --batch-size 2048
+      --ubatch-size 512
+      --ctx-size 128000
+      --parallel 1
+      -np 1
+      --spec-type mtp
+      --spec-draft-n-max 2
+      --spec-draft-ngl 99
+      --reasoning-format deepseek
+      --reasoning-budget-message 'Reasoning budget exhausted. Stop internal reasoning and provide the final answer only.'
+      --warmup
+      --no-webui
+      --perf
+      --log-timestamps
+      --log-prefix
+      --threads 4
+      --threads-batch 8
+      --cache-ram 32768
+      --ctx-checkpoints 32
+      -ngl 99
+    filters:
+      setParamsByID:
+        qwen36-35b-tq3:
+          max_tokens: 16384
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repeat_penalty: 1.0
+          reasoning-budget: 4096
+          chat_template_kwargs:
+            enable_thinking: true
+            preserve_thinking: true
+        qwen36-35b-tq3-precise:
+          max_tokens: 16384
+          temperature: 0.6
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          reasoning-budget: 2048
+          presence_penalty: 1.5
+          repeat_penalty: 1.0
+          chat_template_kwargs:
+            enable_thinking: false
+            preserve_thinking: true
+    checkEndpoint: /health
+    proxy: http://127.0.0.1:${PORT}
+    ttl: 300

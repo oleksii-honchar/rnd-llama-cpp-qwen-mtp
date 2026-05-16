@@ -1,0 +1,35 @@
+# llama-cpp-tq3 — llama-server with TQ3_4S support via turbo-tan/llama.cpp-tq3 fork.
+# Requires: external network mammoth-net, NVIDIA runtime, MODELS_MOUNT_PATH (default: ../llama-models/models next to llama-swap).
+#
+# Build (fresh binaries): from llama-swap root:
+#   docker compose -f docker-compose/swap-local-config1.yaml build --no-cache
+# Use local MTP checkout: LLAMA_CPP_REPO=/Users/oleksii.honchar/www/misc/llama.cpp-tq3 docker compose -f docker-compose/swap-local-config1.yaml build
+services:
+  llama-swap:
+    build:
+      context: .
+      dockerfile: docker-files/Dockerfile.llama-cpp-tq3
+      args:
+        GGML_NATIVE: ${GGML_NATIVE:-ON}
+        BUILD_JOBS: ${BUILD_JOBS:-}
+        GGML_CUDA_ARCHITECTURES: ${GGML_CUDA_ARCHITECTURES:-120}
+        LLAMA_CPP_REPO: ${LLAMA_CPP_REPO:-https://github.com/turbo-tan/llama.cpp-tq3.git}
+    image: llama-cpp-tq3:latest
+    container_name: llama-swap
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
+    ports:
+      - "8014:8080"
+    volumes:
+      - "${MODELS_MOUNT_PATH:-../llama-models/models}:/models:ro"
+      - ./configs/config-1.yaml:/app/config.yaml:ro
+    networks:
+      - mammoth-net
+
+networks:
+  mammoth-net:
+    external: true

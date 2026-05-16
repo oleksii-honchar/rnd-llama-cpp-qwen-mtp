@@ -72,6 +72,38 @@ Runs three benchmark suites:
 
 For the MTP live server test, the server must be running on port 8014.
 
+## Alternative Configuration: TQ3_4S TurboQuant (config-1)
+
+In addition to the MTP config (config-9), this repo includes **config-1** using **TQ3_4S TurboQuant** mixed-precision MoE compression from the [turbo-tan/llama.cpp-tq3](https://github.com/turbo-tan/llama.cpp-tq3) fork.
+
+**Single model:**
+
+| Model | Config ID | Aliases | Size |
+|-------|-----------|---------|------|
+| Qwen3.6-35B-A3B-TQ3_4S | `qwen36-35b-tq3` | `qwen36-35b-tq3-precise` | ~12.4 GiB |
+
+**Start config-1:**
+
+```bash
+./llama-swap/scripts/swap.start.config1.sh
+# Or with rebuild:
+./llama-swap/scripts/swap.start.config1.sh --re-build
+```
+
+**Smoke test config-1:**
+
+```bash
+./llama-swap/scripts/smoke-config1.sh
+```
+
+**Benchmark config-1 (optional):**
+
+```bash
+./llama-swap/scripts/benchmark.config1.sh
+```
+
+
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -130,12 +162,19 @@ rnd-llama-cpp-qwen-mtp/
 ├── .gitignore
 ├── llama-swap/
 │   ├── configs/config-9.yaml             # model config (aliases, params, MTP settings)
+│   ├── configs/config-1.yaml             # TQ3_4S TurboQuant model config (single model: Qwen3.6-35B-A3B)
 │   ├── docker-compose/swap-local-config9.yaml  # Docker Compose
+│   ├── docker-compose/swap-local-config1.yaml  # Docker Compose for TQ3_4S
 │   ├── docker-files/Dockerfile.llama-cpp-beta   # custom Dockerfile (PR #22673)
+│   ├── docker-files/Dockerfile.llama-cpp-tq3   # TQ3_4S Dockerfile (turbo-tan/llama.cpp-tq3)
 │   ├── scripts/
 │   │   ├── swap.start.config9.sh         # start orchestration
 │   │   ├── ensure-models-config9.sh      # bootstrap (download + transplant)
-│   │   └── benchmark.config9.sh          # benchmark harness
+│   │   ├── benchmark.config9.sh          # benchmark harness
+│   │   ├── swap.start.config1.sh         # start orchestration for TQ3_4S
+│   │   ├── ensure-models-config1.sh      # bootstrap for TQ3_4S models
+│   │   ├── smoke-config1.sh              # smoke test for TQ3_4S
+│   │   └── benchmark.config1.sh          # benchmark harness for TQ3_4S (optional)
 │   └── smoke-samples/chat-prompt.txt     # smoke test prompt
 └── llama-models/
     ├── models/                           # downloaded model files (gitignored)
@@ -146,7 +185,11 @@ rnd-llama-cpp-qwen-mtp/
         ├── download-qwopus36-27b-v1-preview-q6_k.sh    # target GGUF download (Q6_K)
         ├── download-qwopus36-27b-v1-preview-q4_k_m.sh  # target GGUF download (Q4_K_M)
         ├── download-qwen36-27b-mtp-q8_0.sh         # source MTP GGUF download
-        └── download-better-qwen3.6-chat-template.sh # chat template download
+        ├── download-better-qwen3.6-chat-template.sh # chat template download
+        ├── download-qwen36-35b-a3b-tq3_4s.sh           # Qwen3.6 35B-A3B TQ3_4S
+        ├── download-qwen36-35b-a3b-mtp-tq3_4s.sh       # Qwen3.6 35B-A3B MTP TQ3_4S
+        ├── download-qwen36-35b-a3b-mmproj.sh           # Qwen3.6 35B-A3B mmproj
+        └── download-qwen36-chat-template-v13.sh          # Qwen3.6 chat template v13
 ```
 
 ## Sources

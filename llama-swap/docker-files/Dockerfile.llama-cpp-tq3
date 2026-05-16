@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1
+
+# =============================================================================
+# Dockerfile.llama-cpp-tq3 — llama-server with TQ3_4S support via turbo-tan/llama.cpp-tq3
+# Usage: docker build -f docker-files/Dockerfile.llama-cpp-tq3 -t llama-cpp-tq3:latest .
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: builder — compile llama-server and llama-bench from the TQ3_4S fork
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.9.0-devel-ubuntu22.04 AS llama-builder
+
+ARG LLAMA_CPP_REPO=https://github.com/turbo-tan/llama.cpp-tq3.git
+# Pin to local HEAD: b3c9eb1db (docs: credit llama.cpp PR #22673 for MTP implementation)
+ARG LLAMA_CPP_REF=b3c9eb1db
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git cmake build-essential python3 curl wget && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+
+# Pin llama.cpp-tq3 (shallow single revision) — same pattern as mammoth-lan/llama-cpp/docker-files/Dockerfile.llama-cpp.
+# LLAMA_CPP_REF — branch, tag, or full SHA for `git fetch origin <ref>`.
+RUN git init llama.cpp-tq3 && cd llama.cpp-tq3 \
+  && git remote add origin "${LLAMA_CPP_REPO}" \
+  && git fetch --depth 1 origin "${LLAMA_CPP_REF}" \
+  && git checkout -q FETCH_HEAD
+
+WORKDIR /tmp/llama.cpp-tq3
+
+# Bump to HEAD (ffbf54e5e) includes:
+# - full_attention_interval handling for Qwen3.5 (commit 6b3b1e198): blocks 0,4,8,...,64
+#   are correctly identified as full attention, fixing "missing tensor blk.64.ssm_conv1d.weight"
+# - dp4a wrapper already upstream (Fix A no longer needed)
+# Fix B — Dockerfile arch override: exclude sub-sm_61 virtual targets.
+# This overrides the CMakeLists auto-detection and prevents the
+# 50-virtual/61-virtual/70-virtual entries that cause compilation failures.
+# Also set GGML_NATIVE=OFF — without it, CMake tries to detect host GPU;
+# in Docker without GPU access this falls back to the problematic auto-list.
+RUN CUDA_ARCHS="${GGML_CUDA_ARCHITECTURES:-61-real:75-real:80-real:86-real:89-real}" && \
+    echo ">>> Building for CUDA architectures: ${CUDA_ARCHS}" && \
+    cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DCMAKE_CUDA_FLAGS="-Wno-deprecated-gpu-targets" \
+        -DGGML_CUDA=ON \
+        -DGGML_CUDA_FA_ALL_QUANTS=ON \
+        -DGGML_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+        -DGGML_NATIVE=OFF
+
+# Build llama-server and llama-bench targets
+# NOTE: llama-perplexity dropped — upstream renamed common target to llama-common but didn't update perplexity's CMakeLists
+# Default 8 jobs for 64GB RAM / 12-thread systems; CUDA template instantiation is memory-heavy.
+# Override: docker build --build-arg BUILD_JOBS=6 ...
+ARG BUILD_JOBS=8
+RUN NJOBS="${BUILD_JOBS:-8}" \
+  && echo ">>> Building with ${NJOBS} parallel jobs" \
+  && cmake --build build -j "${NJOBS}" --target llama-server \
+  && cmake --build build -j "${NJOBS}" --target llama-bench
+
+# ---------------------------------------------------------------------------
+# Stage 2: runtime — copy llama-server and llama-bench into the llama-swap:cuda base image
+# ---------------------------------------------------------------------------
+FROM ghcr.io/mostlygeek/llama-swap:cuda
+USER root
+
+LABEL base="llama-cpp-tq3" \
+      kv_cache_format="TQ3_4S" \
+      description="llama-server with TQ KV cache support (turbo-tan/llama.cpp-tq3)"
+
+# ghcr.io/mostlygeek/llama-swap:cuda resolves `llama-server` from PATH and loads backends from /app (e.g. libggml-cuda.so).
+# Installing only under /usr/local/bin leaves the stock /app/llama-server in place — then -ctv tq3_0 fails.
+COPY --from=llama-builder /tmp/llama.cpp-tq3/build/bin/ /tmp/tq3-bin/
+RUN cp -a /tmp/tq3-bin/llama-server /app/llama-server && \
+    cp -a /tmp/tq3-bin/llama-bench /app/llama-bench && \
+    cp -a /tmp/tq3-bin/llama-server /usr/local/bin/llama-server && \
+    cp -a /tmp/tq3-bin/llama-bench /usr/local/bin/llama-bench && \
+    chmod 755 /app/llama-server /app/llama-bench /usr/local/bin/llama-server /usr/local/bin/llama-bench && \
+    bash -c 'shopt -s nullglob; for f in /tmp/tq3-bin/libggml*.so; do cp -a "$f" /app/; done' && \
+    rm -rf /tmp/tq3-bin
+
+# Inherit ENTRYPOINT/CMD from ghcr.io/mostlygeek/llama-swap:cuda (do not use /entrypoint.sh — removed upstream).
