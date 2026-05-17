@@ -15,7 +15,7 @@ export MODELS_MOUNT_PATH="$MODELS_DIR"
 REQUIRED_MODELS=(
   "Qwen3.6-35B-A3B-MTP-TQ3_4S.gguf:download-qwen36-35b-a3b-mtp-tq3_4s.sh"
   "Qwen3.6-35B-A3B-TQ3_4S.gguf:download-qwen36-35b-a3b-tq3_4s.sh"
-  "chat_template-v13.jinja:download-qwen36-chat-template-v13.sh"
+  "chat_template-v13.jinja:download-qwen-chat-template.sh"
 )
 
 _gguf_header_ok() {
